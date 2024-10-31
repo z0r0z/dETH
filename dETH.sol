@@ -36,12 +36,7 @@ contract dETH is WETH {
             abi.encodePacked(msg.sender, to, msg.value, block.timestamp)
         );
         
-        pendingTransfers[transferId] = PendingTransfer({
-            from: msg.sender,
-            to: to,
-            amount: uint160(msg.value),
-            timestamp: uint96(block.timestamp)
-        });
+        _updatePendingTransfer(transferId, msg.sender, to, msg.value, uint96(block.timestamp));
 
         emit Log(transferId);
 
@@ -53,12 +48,7 @@ contract dETH is WETH {
             abi.encodePacked(msg.sender, to, amount, block.timestamp)
         );
         
-        pendingTransfers[transferId] = PendingTransfer({
-            from: msg.sender,
-            to: to,
-            amount: uint160(amount),
-            timestamp: uint96(block.timestamp)
-        });
+        _updatePendingTransfer(transferId, msg.sender, to, amount, uint96(block.timestamp));
 
         emit Log(transferId);
 
@@ -70,12 +60,7 @@ contract dETH is WETH {
             abi.encodePacked(from, to, amount, block.timestamp)
         );
         
-        pendingTransfers[transferId] = PendingTransfer({
-            from: from,
-            to: to,
-            amount: uint160(amount),
-            timestamp: uint96(block.timestamp)
-        });
+        _updatePendingTransfer(transferId, from, to, amount, uint96(block.timestamp));
 
         emit Log(transferId);
 
@@ -95,5 +80,13 @@ contract dETH is WETH {
             
             delete pendingTransfers[transferId];
         }
+    }
+
+    function _updatePendingTransfer(bytes32 transferId, address from, address to, uint256 amount, uint96 timestamp) internal {
+        PendingTransfer storage pt = pendingTransfers[transferId];
+        pt.from = from;
+        pt.to = to;
+        pt.amount += uint160(amount);
+        pt.timestamp = timestamp;
     }
 }
