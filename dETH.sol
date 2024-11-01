@@ -5,6 +5,7 @@ import {ERC20, WETH} from "@solady/src/tokens/WETH.sol";
 
 /// @notice Delayed ethereum token
 /// @author z0r0z.eth for nani.eth
+/// @custom:coauthor tabshaikh.eth
 contract dETH is WETH {
     event Log(bytes32 transferId);
 
@@ -36,16 +37,26 @@ contract dETH is WETH {
             abi.encodePacked(msg.sender, to, msg.value, block.timestamp)
         );
         
-        pendingTransfers[transferId] = PendingTransfer({
-            from: msg.sender,
-            to: to,
-            amount: uint160(msg.value),
-            timestamp: uint96(block.timestamp)
-        });
+        _updatePendingTransfer(transferId, msg.sender, to, msg.value, uint96(block.timestamp));
 
         emit Log(transferId);
 
         _mint(to, msg.value);
+    }
+
+    function withdrawFrom(address from, address to, uint256 amount) public {
+        if (msg.sender != from) 
+            _spendAllowance(from, msg.sender, amount);
+
+        _burn(from, amount);
+        /// @solidity memory-safe-assembly
+        assembly {
+            // Transfer the ETH and check if it succeeded or not.
+            if iszero(call(gas(), caller(), amount, codesize(), 0x00, codesize(), 0x00)) {
+                mstore(0x00, 0xb12d13eb) // `ETHTransferFailed()`.
+                revert(0x1c, 0x04)
+            }
+        }
     }
 
     function transfer(address to, uint256 amount) public override(ERC20) returns (bool) {
@@ -53,12 +64,7 @@ contract dETH is WETH {
             abi.encodePacked(msg.sender, to, amount, block.timestamp)
         );
         
-        pendingTransfers[transferId] = PendingTransfer({
-            from: msg.sender,
-            to: to,
-            amount: uint160(amount),
-            timestamp: uint96(block.timestamp)
-        });
+        _updatePendingTransfer(transferId, msg.sender, to, amount, uint96(block.timestamp));
 
         emit Log(transferId);
 
@@ -70,12 +76,7 @@ contract dETH is WETH {
             abi.encodePacked(from, to, amount, block.timestamp)
         );
         
-        pendingTransfers[transferId] = PendingTransfer({
-            from: from,
-            to: to,
-            amount: uint160(amount),
-            timestamp: uint96(block.timestamp)
-        });
+        _updatePendingTransfer(transferId, from, to, amount, uint96(block.timestamp));
 
         emit Log(transferId);
 
@@ -94,6 +95,16 @@ contract dETH is WETH {
             _transfer(pt.to, pt.from, pt.amount);
             
             delete pendingTransfers[transferId];
+        }
+    }
+
+    function _updatePendingTransfer(bytes32 transferId, address from, address to, uint256 amount, uint96 timestamp) internal {
+        unchecked {
+            PendingTransfer storage pt = pendingTransfers[transferId];
+            pt.from = from;
+            pt.to = to;
+            pt.amount += uint160(amount);
+            pt.timestamp = timestamp;
         }
     }
 }
