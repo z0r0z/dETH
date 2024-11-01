@@ -10,6 +10,7 @@ contract dETH is WETH {
     event Log(bytes32 transferId);
 
     uint256 constant public DELAY = 1 days;
+    mapping(address=>uint) nonces;
 
     error TransferFinalized();
 
@@ -33,9 +34,12 @@ contract dETH is WETH {
     }
 
     function depositTo(address to) public payable {
+        uint nonce=nonces[msg.sender];
+
         bytes32 transferId = keccak256(
-            abi.encodePacked(msg.sender, to, msg.value, block.timestamp)
+            abi.encodePacked(msg.sender, to, msg.value, block.timestamp,nonce)
         );
+        nonces[msg.sender]+=1;
         
         _updatePendingTransfer(transferId, msg.sender, to, msg.value, uint96(block.timestamp));
 
@@ -60,9 +64,12 @@ contract dETH is WETH {
     }
 
     function transfer(address to, uint256 amount) public override(ERC20) returns (bool) {
+        uint nonce=nonces[msg.sender];
+
         bytes32 transferId = keccak256(
-            abi.encodePacked(msg.sender, to, amount, block.timestamp)
+            abi.encodePacked(msg.sender, to, msg.value, block.timestamp,nonce)
         );
+        nonces[msg.sender]+=1;
         
         _updatePendingTransfer(transferId, msg.sender, to, amount, uint96(block.timestamp));
 
@@ -72,9 +79,12 @@ contract dETH is WETH {
     }
 
     function transferFrom(address from, address to, uint256 amount) public override(ERC20) returns (bool) {
+        uint nonce=nonces[msg.sender];
+
         bytes32 transferId = keccak256(
-            abi.encodePacked(from, to, amount, block.timestamp)
+            abi.encodePacked(msg.sender, to, msg.value, block.timestamp,nonce)
         );
+        nonces[msg.sender]+=1;
         
         _updatePendingTransfer(transferId, from, to, amount, uint96(block.timestamp));
 
