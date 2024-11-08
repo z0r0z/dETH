@@ -13,6 +13,14 @@ contract dETHTest is Test, TestPlus {
         deth = new dETH();
     }
 
+    function testName() public {
+        assertEq(deth.name(), "Delayed Ether");
+    }
+
+    function testSymbol() public {
+        assertEq(deth.symbol(), "dETH");
+    }
+    
     function testFuzz_Deposit(uint256 amount) public {
         // Test depositing ETH
         uint256 depositAmount = bound(amount, 1, 1000 ether);
@@ -88,6 +96,26 @@ contract dETHTest is Test, TestPlus {
         assertEq(deth.balanceOf(recipient), transferAmount, "Recipient should receive tokens");
     }
 
+    function testFuzz_TransferFrom(address spender, address recipient, uint256 amount) public {
+        vm.assume(spender != address(0) && recipient != address(0) && spender != recipient);
+        uint256 transferAmount = bound(amount, 1, 1000 ether);
+        
+        // Deposit first
+        deth.deposit{value: transferAmount}();
+        
+        // Approve spender
+        deth.approve(spender, transferAmount);
+        
+        // Switch to spender's context and transfer
+        vm.prank(spender);
+        bool success = deth.transferFrom(address(this), recipient, transferAmount);
+        
+        assertTrue(success, "TransferFrom should succeed");
+        assertEq(deth.balanceOf(address(this)), 0, "Sender balance should be zero");
+        assertEq(deth.balanceOf(recipient), transferAmount, "Recipient should receive tokens");
+        assertEq(deth.allowance(address(this), spender), 0, "Allowance should be consumed");
+    }
+
     function testFailReverseIncorrectTransferId() public {        
         // Deposit and transfer
         bytes32 transferId = bytes32(0);
@@ -104,7 +132,7 @@ contract dETHTest is Test, TestPlus {
         bytes32 transferId = _depositAndTransfer(recipient, transferAmount);
 
         // Wait beyond the reverse timeframe
-        vm.warp(block.timestamp + _hem(_random(), 1 days + 1, type(uint256).max));
+        vm.warp(block.timestamp + _hem(_random(), 1 days + 1, 100 days));
         
         vm.expectRevert();
         deth.reverse(transferId);
@@ -129,6 +157,76 @@ contract dETHTest is Test, TestPlus {
         deth.deposit{value: amount}();
         deth.transfer(to, amount);
         return transferId;
+    }
+
+    function testFuzz_WithdrawFrom(address spender, uint256 amount) public {
+        vm.assume(spender != address(0) && spender != address(this));
+        uint256 depositAmount = bound(amount, 1, 1000 ether);
+        
+        // Deposit first
+        deth.deposit{value: depositAmount}();
+        
+        // Approve spender
+        deth.approve(spender, depositAmount);
+        
+        // Switch to spender's context and withdraw
+        vm.prank(spender);
+        deth.withdrawFrom(address(this), spender, depositAmount);
+        
+        // Check balances
+        assertEq(address(deth).balance, 0, "Contract should have zero balance");
+        assertEq(deth.balanceOf(address(this)), 0, "User should have zero dETH");
+        assertEq(spender.balance, depositAmount, "ETH should be withdrawn to spender");
+        assertEq(deth.allowance(address(this), spender), 0, "Allowance should be consumed");
+    }
+
+    function testFuzz_PartialWithdrawFrom(address spender, uint256 amount) public {
+        vm.assume(spender != address(0) && spender != address(this));
+        uint256 depositAmount = bound(amount, 1, 1000 ether);
+        
+        // Deposit first
+        deth.deposit{value: depositAmount}();
+        
+        // Approve spender
+        deth.approve(spender, depositAmount);
+        
+        // Withdraw partial amount
+        uint256 withdrawAmount = bound(_random(), 1, depositAmount);
+        
+        // Switch to spender's context and withdraw
+        vm.prank(spender);
+        deth.withdrawFrom(address(this), spender, withdrawAmount);
+        
+        // Check balances
+        assertEq(address(deth).balance, depositAmount - withdrawAmount, "Contract balance should be reduced");
+        assertEq(spender.balance, withdrawAmount, "ETH should be partially withdrawn to spender");
+        assertEq(deth.allowance(address(this), spender), depositAmount - withdrawAmount, "Allowance should be reduced");
+    }
+
+    function testFuzz_FailWithdrawFromInsufficientAllowance(address spender, uint256 amount) public {
+        vm.assume(spender != address(0));
+        uint256 depositAmount = bound(amount, 1, 1000 ether);
+        
+        // Deposit first
+        deth.deposit{value: depositAmount}();
+        
+        // Approve less than deposit amount
+        uint256 allowance = bound(_random(), 0, depositAmount - 1);
+        deth.approve(spender, allowance);
+        
+        // Try to withdraw more than allowed
+        vm.prank(spender);
+        vm.expectRevert();
+        deth.withdrawFrom(address(this), spender, depositAmount);
+    }
+
+    function testFailWithdrawFromZero(address spender) public {
+        vm.assume(spender != address(0));
+        deth.approve(spender, 1 ether);
+        
+        vm.prank(spender);
+        vm.expectRevert();
+        deth.withdrawFrom(address(this), spender, 0);
     }
 
     receive() external payable {} // Allow contract to receive ETH
