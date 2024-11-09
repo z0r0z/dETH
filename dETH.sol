@@ -49,6 +49,7 @@ contract dETH is WETH {
             _spendAllowance(from, msg.sender, amount);
 
         _burn(from, amount);
+        
         /// @solidity memory-safe-assembly
         assembly {
             // Transfer the ETH and check if it succeeded or not.
